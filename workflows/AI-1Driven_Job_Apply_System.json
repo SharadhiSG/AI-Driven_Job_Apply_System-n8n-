@@ -1,0 +1,311 @@
+{
+  "name": "AI-1Driven_Job_Apply_System",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "8a554bd6-9922-4e4c-9794-365b5efd64cb",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://remotive.com/api/remote-jobs",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        208,
+        0
+      ],
+      "id": "1c0e1d7c-aba5-4b66-80ee-b394a0b06589",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "const keywords = [\n  \"data analyst\",\n  \"business intelligence\",\n  \"power bi\",\n  \"data scientist\",\n  \"machine learning\",\n  \"sql\",\n  \"python\",\n  \"dashboard\"\n];\n\nconst jobs = items[0].json.jobs;\n\nconst filteredJobs = jobs.filter(job => {\n  const title = job.title?.toLowerCase() || \"\";\n  const description = job.description?.toLowerCase() || \"\";\n  const tags = (job.tags || []).join(\" \").toLowerCase();\n\n  return keywords.some(keyword =>\n    title.includes(keyword) ||\n    description.includes(keyword) ||\n    tags.includes(keyword)\n  );\n});\n\nif (filteredJobs.length === 0) {\n  return [\n    {\n      json: {\n        message: \"No matching jobs found\"\n      }\n    }\n  ];\n}\n\nreturn filteredJobs.slice(0, 3).map(job => ({\n  json: {\n    title: job.title,\n    company: job.company_name,\n    url: job.url,\n    tags: job.tags,\n    description: job.description   // ✅ THIS WAS MISSING\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "538b1956-4f86-419e-8138-65b1fa7918a6",
+      "name": "Code in JavaScript",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-5-MINI"
+        },
+        "responses": {
+          "values": [
+            {},
+            {
+              "role": "system",
+              "content": "You are an expert technical recruiter and ATS analyst.\nYou extract structured hiring requirements from job descriptions.\n"
+            },
+            {
+              "content": "=Analyze the following job description and extract:\n\n- Required skills\n- Tools & technologies\n- Keywords for ATS\n- Experience level (junior / mid / senior)\n\nReturn ONLY valid JSON in this format:\n\n{\n  \"skills\": [],\n  \"tools\": [],\n  \"keywords\": [],\n  \"experience_level\": \"\"\n}\n\nJob Description:\n{{ $json.description }}\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        624,
+        0
+      ],
+      "id": "72c3c8d4-16cf-483f-a8d5-c2b62e261582",
+      "name": "Message a model",
+      "credentials": {
+        "openAiApi": {
+          "id": "7cLh41kguQ2CQ19q",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract the AI text response\nconst aiText = $json.output[0].content[0].text;\n\n// Parse JSON safely\nlet parsed;\ntry {\n  parsed = JSON.parse(aiText);\n} catch (e) {\n  parsed = { error: \"Failed to parse AI output\" };\n}\n\nreturn [\n  {\n    json: {\n      title: $json.title,\n      company: $json.company,\n      url: $json.url,\n      skills: parsed.skills || [],\n      tools: parsed.tools || [],\n      keywords: parsed.keywords || [],\n      experience_level: parsed.experience_level || \"\"\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        976,
+        0
+      ],
+      "id": "385e4e52-0ecc-41dd-bf1b-fc65ae429f71",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-5-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=Customize my resume for the following job.\n\nJOB DETAILS\nTitle: {{ $json.title }}\nCompany: {{ $json.company }}\nExperience Level: {{ $json.experience_level }}\n\nRequired Skills:\n{{ $json.skills.join(\", \") }}\n\nTools & Technologies:\n{{ $json.tools.join(\", \") }}\n\n====================\nMY MASTER RESUME\n====================\n{{ $json.master_resume }}\n\nRULES:\n- Do NOT invent experience\n- Prioritize relevant projects\n- Optimize for ATS keywords\n- Keep resume within 1 page\n- Professional tone only\n\nReturn ONLY the customized resume text.\n"
+            },
+            {
+              "role": "system",
+              "content": "You are an expert ATS resume writer and career coach.\nYou customize resumes for specific job roles without fabricating experience.\nYou optimize for ATS keywords while keeping content truthful and concise.\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        1392,
+        0
+      ],
+      "id": "17e7d844-18c8-445c-836f-b5dc72b1929b",
+      "name": "Message a model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "7cLh41kguQ2CQ19q",
+          "name": "n8n free OpenAI API credits"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "04116f7a-fe27-4531-8cca-55a44522d73a",
+              "name": "master_resume",
+              "value": "Senior Performance Marketer with 5+ years of experience in user acquisition, paid media scaling, and growth strategy.  Experience: - Led $1M+/month paid media budgets across Meta, Google, TikTok - Improved ROAS by 40% through funnel optimization and A/B testing  Projects: - Mobile app UA scaling across Tier-1 geos - Automation of campaign reporting using GA4 and dashboards",
+              "type": "string"
+            },
+            {
+              "id": "6fc3342b-f7ef-45b9-83a1-e35fb0c41bf4",
+              "name": "title",
+              "value": "={{ $node[\"Code in JavaScript1\"].json.title }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1184,
+        0
+      ],
+      "id": "75f2bb56-154e-486c-8cd6-cdb05b77b3ec",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "const resumeText = $json.output[0].content[0].text;\n\nreturn [\n  {\n    json: {\n      title: \"Senior Performance Marketer\",   // temporary hardcoded\n      company: \"Unknown Company\",             // temporary\n      resume_text: resumeText\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1744,
+        0
+      ],
+      "id": "e9c9becb-de76-43df-9ac1-03afce66fbf9",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "sendTo": "shreyassg3112@gmail.com",
+        "subject": "=Application for {{ $json.title }}\n",
+        "message": "=Hello Hiring Team,\n\nI am applying for the {{ $json.title }} role.\n\nPlease find my resume below.\n\n{{ $json.resume_text }}\n\nRegards,\nSharadhi\n",
+        "options": {
+          "appendAttribution": true
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1952,
+        0
+      ],
+      "id": "0446509d-3c0f-4676-9337-3e55dfb4a836",
+      "name": "Send message and wait for response",
+      "webhookId": "0b92aa90-19e7-4505-91a6-063923a28e90",
+      "notesInFlow": false,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "9hXLOmkE9MqNYY6k",
+          "name": "Gmail account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Message a model1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Send message and wait for response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "27abae0a-dbb3-4968-97fc-fc544cddfa74",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a72dfeff3aa6d703dcfb3df31b2bc356999306da52a7771b0ed4460cca5e6f20"
+  },
+  "id": "vFUR85Ffu3XoKblS",
+  "tags": []
+}
